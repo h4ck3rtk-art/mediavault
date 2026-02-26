@@ -300,6 +300,18 @@
       white-space: nowrap; -webkit-tap-highlight-color: transparent;
     }
     .btn-reset:hover { color: var(--text); border-color: var(--muted); }
+    .btn-refresh {
+      background: rgba(201,65,90,0.1); border: 1px solid rgba(201,65,90,0.35); color: var(--accent2);
+      padding: 9px 16px; border-radius: 8px; font-family: 'DM Mono', monospace;
+      font-size: 11px; cursor: pointer; transition: all 0.2s;
+      white-space: nowrap; -webkit-tap-highlight-color: transparent; display: flex; align-items: center; gap: 6px;
+    }
+    .btn-refresh:hover { background: rgba(201,65,90,0.2); border-color: var(--accent); color: var(--text); }
+    .btn-refresh:disabled { opacity: 0.4; cursor: not-allowed; }
+    .btn-refresh:disabled .refresh-icon { animation: spin 0.8s linear infinite; }
+    .refresh-icon { display: inline-block; transition: transform 0.3s; }
+    .btn-refresh:not(:disabled):hover .refresh-icon { transform: rotate(180deg); }
+    .header-actions { display: flex; gap: 8px; align-items: center; }
     .filter-bar { display: flex; gap: 8px; margin-bottom: 20px; overflow-x: auto; -webkit-overflow-scrolling: touch; scrollbar-width: none; padding-bottom: 2px; }
     .filter-bar::-webkit-scrollbar { display: none; }
     .filter-btn {
@@ -401,7 +413,12 @@
 <div id="gallery">
   <div class="gallery-header">
     <div class="gallery-title">Gallery<span id="mediaCount"></span></div>
-    <button class="btn-reset" onclick="resetApp()">🔒 Lock</button>
+    <div class="header-actions">
+      <button class="btn-refresh" id="btnRefresh" onclick="refreshMedia()">
+        <span class="refresh-icon">↻</span> Refresh
+      </button>
+      <button class="btn-reset" onclick="resetApp()">🔒 Lock</button>
+    </div>
   </div>
   <div class="filter-bar">
     <button class="filter-btn active" onclick="filterMedia('all',this)">All</button>
@@ -573,6 +590,15 @@
     const data = await res.json();
     if (!res.ok) throw new Error(data.error || "Server error");
     return data;
+  }
+
+  async function refreshMedia() {
+    const btn = document.getElementById("btnRefresh");
+    btn.disabled = true;
+    btn.innerHTML = '<span class="refresh-icon">↻</span> Fetching...';
+    await loadMedia();
+    btn.disabled = false;
+    btn.innerHTML = '<span class="refresh-icon">↻</span> Refresh';
   }
 
   async function loadMedia() {
