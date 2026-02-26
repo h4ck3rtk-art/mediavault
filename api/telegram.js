@@ -1,16 +1,13 @@
 // api/telegram.js — Vercel Serverless Function
 // Secrets live ONLY in Vercel Environment Variables, never in the browser.
-
 export default async function handler(req, res) {
   // CORS headers
   res.setHeader("Access-Control-Allow-Origin", "*");
   res.setHeader("Access-Control-Allow-Methods", "POST, OPTIONS");
   res.setHeader("Access-Control-Allow-Headers", "Content-Type");
-
   if (req.method === "OPTIONS") return res.status(204).end();
   if (req.method !== "POST") return res.status(405).json({ error: "Method not allowed" });
 
-  // Read secrets from Vercel Environment Variables
   const BOT_TOKEN        = process.env.TELEGRAM_BOT_TOKEN;
   const CHANNEL_ID       = process.env.TELEGRAM_CHANNEL_ID;
   const CORRECT_PASSWORD = process.env.VAULT_PASSWORD;
@@ -21,9 +18,8 @@ export default async function handler(req, res) {
     });
   }
 
-  const { action, password, file_id } = req.body;
+  const { action, password, file_id, file_ids } = req.body;
 
-  // Validate password on every request
   if (!password || password !== CORRECT_PASSWORD) {
     return res.status(401).json({ error: "Invalid password" });
   }
@@ -40,7 +36,6 @@ export default async function handler(req, res) {
         `https://api.telegram.org/bot${BOT_TOKEN}/getUpdates?limit=100&allowed_updates=["channel_post"]`
       );
       const tgData = await tgRes.json();
-
       if (!tgData.ok) {
         return res.status(502).json({ error: tgData.description || "Telegram API error" });
       }
@@ -50,10 +45,21 @@ export default async function handler(req, res) {
         .filter(u => {
           const post = u.channel_post;
           if (!post) return false;
-          return String(post.chat.id).includes(targetId) && (post.photo || post.video);
+          const hasMedia = post.photo || post.video || post.animation ||
+            (post.document && post.document.mime_type === "image/gif");
+          return String(post.chat.id).includes(targetId) && hasMedia;
         })
         .map(u => {
           const post = u.channel_post;
+
+          // GIF via animation field (Telegram converts GIFs to MP4 animation)
+          if (post.animation) {
+            return { type: "gif", file_id: post.animation.file_id, date: post.date };
+          }
+          // GIF sent as document with image/gif mime
+          if (post.document && post.document.mime_type === "image/gif") {
+            return { type: "gif", file_id: post.document.file_id, date: post.date };
+          }
           if (post.photo) {
             const largest = post.photo[post.photo.length - 1];
             return { type: "photo", file_id: largest.file_id, date: post.date };
@@ -64,23 +70,41 @@ export default async function handler(req, res) {
       return res.status(200).json({ ok: true, posts });
     }
 
-    // ── Resolve file URL (token never sent to browser) ──
+    // ── Resolve a SINGLE file URL ──
     if (action === "getFileUrl") {
       if (!file_id) return res.status(400).json({ error: "file_id required" });
-
       const tgRes  = await fetch(`https://api.telegram.org/bot${BOT_TOKEN}/getFile?file_id=${file_id}`);
       const tgData = await tgRes.json();
-
       if (!tgData.ok || !tgData.result.file_path) {
         return res.status(502).json({ error: "Could not resolve file" });
       }
-
       const url = `https://api.telegram.org/file/bot${BOT_TOKEN}/${tgData.result.file_path}`;
       return res.status(200).json({ ok: true, url });
     }
 
-    return res.status(400).json({ error: "Unknown action" });
+    // ── Resolve MULTIPLE file URLs in parallel (batch) ──
+    if (action === "getFileUrls") {
+      if (!file_ids || !Array.isArray(file_ids)) {
+        return res.status(400).json({ error: "file_ids array required" });
+      }
 
+      const results = await Promise.allSettled(
+        file_ids.map(async (fid) => {
+          const tgRes  = await fetch(`https://api.telegram.org/bot${BOT_TOKEN}/getFile?file_id=${fid}`);
+          const tgData = await tgRes.json();
+          if (!tgData.ok || !tgData.result.file_path) return { file_id: fid, url: null };
+          return {
+            file_id: fid,
+            url: `https://api.telegram.org/file/bot${BOT_TOKEN}/${tgData.result.file_path}`
+          };
+        })
+      );
+
+      const urls = results.map(r => (r.status === "fulfilled" ? r.value : { file_id: null, url: null }));
+      return res.status(200).json({ ok: true, urls });
+    }
+
+    return res.status(400).json({ error: "Unknown action" });
   } catch (err) {
     return res.status(500).json({ error: "Proxy error: " + err.message });
   }
