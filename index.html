@@ -61,7 +61,6 @@
 
     .header-right { display: flex; align-items: center; gap: 10px; }
 
-    /* ── LOGOUT BUTTON ── */
     .btn-logout {
       display: flex; align-items: center; gap: 6px;
       background: rgba(201,65,90,0.1);
@@ -187,7 +186,6 @@
       touch-action: pan-y;
     }
 
-    /* Loading / error state */
     #reelsStatus {
       position: absolute; inset: 0;
       display: flex; flex-direction: column;
@@ -199,14 +197,25 @@
     @keyframes spin { to{transform:rotate(360deg)} }
     #reelsStatusText { color: var(--muted); font-size: 12px; }
 
-    /* Reel strip container */
+    /* Loading progress bar */
+    #loadProgress {
+      width: 180px; height: 2px;
+      background: rgba(255,255,255,0.08);
+      border-radius: 2px; overflow: hidden;
+    }
+    #loadProgressBar {
+      height: 100%; width: 0%;
+      background: linear-gradient(90deg, var(--accent3), var(--accent));
+      border-radius: 2px;
+      transition: width 0.3s ease;
+    }
+
     #reelStrip {
       position: absolute; inset: 0;
       transition: transform 0.4s cubic-bezier(0.25,0.46,0.45,0.94);
       will-change: transform;
     }
 
-    /* Individual reel slide */
     .reel-slide {
       position: absolute;
       left: 0; right: 0;
@@ -230,7 +239,28 @@
       display: block;
     }
 
-    /* Subtle gradient overlay top/bottom */
+    /* GIF badge */
+    .gif-badge {
+      position: absolute;
+      top: 14px; left: 14px;
+      z-index: 5;
+      background: rgba(0,0,0,0.55);
+      border: 1px solid rgba(255,255,255,0.18);
+      color: #fff;
+      font-family: 'DM Mono', monospace;
+      font-size: 9px;
+      letter-spacing: 1.5px;
+      padding: 3px 8px;
+      border-radius: 5px;
+      backdrop-filter: blur(6px);
+      -webkit-backdrop-filter: blur(6px);
+    }
+
+    /* GIF (Telegram sends as mp4 animation — autoplay/loop/muted) */
+    .reel-slide.reel-gif video {
+      /* same as regular video, but always muted and looping */
+    }
+
     .reel-slide::before {
       content: '';
       position: absolute;
@@ -246,7 +276,6 @@
       pointer-events: none; z-index: 2;
     }
 
-    /* Progress bar strip on side */
     .reel-progress-strip {
       position: fixed;
       right: 6px;
@@ -269,7 +298,6 @@
       box-shadow: 0 0 6px var(--accent);
     }
 
-    /* Swipe hint */
     .swipe-hint {
       position: absolute;
       bottom: 70px; left: 50%; transform: translateX(-50%);
@@ -283,7 +311,6 @@
     @keyframes bounceUp { 0%,100%{transform:translateY(0)} 50%{transform:translateY(-8px)} }
     .swipe-hint-text { font-size: 9px; color: rgba(255,255,255,0.5); letter-spacing: 1.5px; text-transform: uppercase; }
 
-    /* Empty state */
     .empty-reel {
       position: absolute; inset: 0;
       display: flex; flex-direction: column; align-items: center; justify-content: center;
@@ -291,8 +318,6 @@
     }
     .empty-reel .empty-icon { font-size: 48px; }
     .empty-reel p { font-size: 12px; color: var(--muted); line-height: 1.8; }
-
-    /* Error box */
     .error-box { background: rgba(201,65,90,0.07); border: 1px solid rgba(201,65,90,0.25); color: var(--accent2); border-radius: var(--radius); padding: 14px 18px; font-size: 12px; line-height: 1.6; max-width: 320px; text-align: center; }
 
     @media (max-width:480px) { .pw-title{font-size:30px} header{padding:12px 16px} }
@@ -355,6 +380,7 @@
   <div id="reelsStatus">
     <div class="spinner"></div>
     <div id="reelsStatusText">Fetching from Telegram...</div>
+    <div id="loadProgress"><div id="loadProgressBar"></div></div>
   </div>
   <div id="reelStrip"></div>
   <div class="reel-progress-strip" id="progressStrip"></div>
@@ -368,7 +394,8 @@
     const btn = document.getElementById("btnMute");
     btn.textContent = isMuted ? "🔇" : "🔊";
     btn.classList.toggle("muted", isMuted);
-    document.querySelectorAll(".reel-slide video").forEach(v => { v.muted = isMuted; });
+    // Only mute real videos — GIFs stay muted always
+    document.querySelectorAll(".reel-slide:not(.reel-gif) video").forEach(v => { v.muted = isMuted; });
   }
 
   /* ── PETAL RAIN ── */
@@ -393,11 +420,9 @@
   const canvas = document.getElementById("bgCanvas");
   const ctx = canvas.getContext("2d");
   let particles = [];
-
   function resizeCanvas() { canvas.width = canvas.offsetWidth; canvas.height = canvas.offsetHeight; }
   resizeCanvas();
   window.addEventListener("resize", resizeCanvas);
-
   class Particle {
     constructor() { this.reset(); }
     reset() {
@@ -503,6 +528,7 @@
     document.getElementById("progressStrip").innerHTML = "";
     document.getElementById("reelsStatus").style.display = "flex";
     document.getElementById("reelsStatusText").textContent = "Fetching from Telegram...";
+    document.getElementById("loadProgressBar").style.width = "0%";
     allMedia = [];
     currentIndex = 0;
     await loadMedia();
@@ -510,32 +536,47 @@
     btn.innerHTML = '<span class="refresh-spin">↻</span> Refresh';
   }
 
+  function setProgress(pct) {
+    document.getElementById("loadProgressBar").style.width = Math.min(100, pct) + "%";
+  }
+
   async function loadMedia() {
     try {
+      setProgress(10);
       const { posts } = await api("getUpdates");
       if (!posts || posts.length === 0) {
         document.getElementById("reelsStatus").innerHTML = `
           <div class="empty-reel">
             <div class="empty-icon">📭</div>
-            <p>No media found. Make sure your bot is an <strong>Admin</strong><br>in the channel, send a photo/video, then reload.</p>
+            <p>No media found. Make sure your bot is an <strong>Admin</strong><br>in the channel, send a photo/video/GIF, then reload.</p>
           </div>`;
         return;
       }
 
-      document.getElementById("reelsStatusText").textContent = `Loading ${posts.length} items...`;
+      setProgress(25);
+      document.getElementById("reelsStatusText").textContent = `Resolving ${posts.length} items...`;
+
+      // ── BATCH: resolve all file URLs in ONE parallel server call ──
+      const file_ids = posts.map(p => p.file_id);
+      const { urls } = await api("getFileUrls", { file_ids });
+      setProgress(80);
 
       const mediaItems = [];
-      for (const post of posts) {
-        try {
-          const { url } = await api("getFileUrl", { file_id: post.file_id });
-          if (url) mediaItems.push({ type: post.type, url, date: post.date });
-        } catch { /* skip */ }
-      }
+      urls.forEach((entry, i) => {
+        if (entry && entry.url) {
+          mediaItems.push({ type: posts[i].type, url: entry.url, date: posts[i].date });
+        }
+      });
 
+      setProgress(100);
       allMedia = mediaItems.reverse();
       currentIndex = 0;
-      document.getElementById("reelsStatus").style.display = "none";
-      buildReelSlides();
+
+      setTimeout(() => {
+        document.getElementById("reelsStatus").style.display = "none";
+        buildReelSlides();
+      }, 300);
+
     } catch (err) {
       document.getElementById("reelsStatus").innerHTML = `<div class="empty-reel"><div class="error-box">Error: ${err.message}</div></div>`;
     }
@@ -552,17 +593,30 @@
       slide.style.top = (i * slideHeight) + "px";
 
       const isVideo = item.type === "video";
+      const isGif   = item.type === "gif";
 
-      if (isVideo) {
+      if (isVideo || isGif) {
         const vid = document.createElement("video");
         vid.src = item.url;
         vid.loop = true;
         vid.playsInline = true;
-        vid.muted = isMuted;
+        // GIFs are always muted; real videos respect isMuted
+        vid.muted = isGif ? true : isMuted;
         vid.preload = "metadata";
         vid.controls = false;
+
+        if (isGif) {
+          slide.classList.add("reel-gif");
+          // GIF badge
+          const badge = document.createElement("div");
+          badge.className = "gif-badge";
+          badge.textContent = "GIF";
+          slide.appendChild(badge);
+        }
+
         slide.appendChild(vid);
       } else {
+        // photo
         const img = document.createElement("img");
         img.src = item.url;
         img.loading = i < 3 ? "eager" : "lazy";
@@ -573,7 +627,7 @@
       strip.appendChild(slide);
     });
 
-    // Add swipe hint on first slide
+    // Swipe hint
     const hint = document.createElement("div");
     hint.className = "swipe-hint";
     hint.style.position = "fixed";
@@ -591,7 +645,7 @@
 
     window.addEventListener("resize", () => {
       slideHeight = window.innerHeight - 56;
-      document.querySelectorAll(".reel-slide").forEach((s, i) => { s.style.top = (i * slideHeight) + "px"; });
+      document.querySelectorAll(".reel-slide").forEach((s, idx) => { s.style.top = (idx * slideHeight) + "px"; });
       goToSlide(currentIndex, false);
     });
   }
@@ -668,7 +722,7 @@
       document.getElementById("reelStrip").style.transform = `translateY(${baseOffset + dy * 0.4}px)`;
     }, { passive: true });
 
-    view.addEventListener("touchend", e => {
+    view.addEventListener("touchend", () => {
       if (!isDragging) return;
       isDragging = false;
       if (lastDelta < -60) goToSlide(currentIndex + 1);
@@ -695,18 +749,16 @@
 
   function resetApp() {
     document.querySelectorAll(".reel-slide video").forEach(v => v.pause());
-
     allMedia = [];
     sessionPassword = "";
     currentIndex = 0;
-
     document.getElementById("reelStrip").innerHTML = "";
     document.getElementById("progressStrip").innerHTML = "";
     document.getElementById("reelsStatus").style.display = "flex";
     document.getElementById("reelsStatusText").textContent = "Fetching from Telegram...";
+    document.getElementById("loadProgressBar").style.width = "0%";
     document.getElementById("reelsView").style.display = "none";
     document.getElementById("headerActions").style.display = "none";
-
     const ps = document.getElementById("passwordScreen");
     ps.style.display = "flex";
     ps.style.animation = "fadeUp 0.5s ease both";
