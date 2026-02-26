@@ -75,6 +75,20 @@
     }
     .btn-logout:hover { background: rgba(201,65,90,0.2); border-color: var(--accent); color: var(--text); }
 
+    .btn-mute {
+      display: flex; align-items: center; justify-content: center;
+      width: 34px; height: 34px;
+      background: rgba(255,255,255,0.06);
+      border: 1px solid rgba(255,255,255,0.12);
+      border-radius: 8px;
+      font-size: 15px;
+      cursor: pointer; transition: all 0.2s;
+      -webkit-tap-highlight-color: transparent;
+      line-height: 1;
+    }
+    .btn-mute:hover { background: rgba(255,255,255,0.12); border-color: rgba(255,255,255,0.25); }
+    .btn-mute.muted { background: rgba(201,65,90,0.15); border-color: rgba(201,65,90,0.35); }
+
     .btn-refresh-top {
       display: flex; align-items: center; gap: 6px;
       background: rgba(201,169,110,0.07);
@@ -168,7 +182,7 @@
       display: none;
       position: fixed;
       inset: 0;
-      top: 56px; /* below header */
+      top: 56px;
       overflow: hidden;
       touch-action: pan-y;
     }
@@ -232,51 +246,6 @@
       pointer-events: none; z-index: 2;
     }
 
-    /* Reel info overlay */
-    .reel-info {
-      position: absolute;
-      bottom: 20px; left: 16px; right: 16px;
-      z-index: 5; pointer-events: none;
-    }
-    .reel-date {
-      font-size: 10px; color: rgba(255,255,255,0.6);
-      letter-spacing: 0.5px;
-    }
-    .reel-type-badge {
-      display: inline-flex; align-items: center; gap: 5px;
-      font-size: 9px; letter-spacing: 1px; text-transform: uppercase;
-      padding: 3px 8px; border-radius: 20px; margin-bottom: 6px;
-    }
-    .badge-photo { background: rgba(201,65,90,0.3); color: var(--accent2); border: 1px solid rgba(201,65,90,0.3); }
-    .badge-video { background: rgba(201,169,110,0.2); color: var(--gold); border: 1px solid rgba(201,169,110,0.3); }
-
-    /* Progress dots / index counter */
-    .reel-counter {
-      position: fixed;
-      top: 68px; right: 16px;
-      z-index: 210;
-      display: flex; flex-direction: column; align-items: center; gap: 3px;
-    }
-    .counter-text {
-      font-size: 10px; color: var(--muted); letter-spacing: 0.5px;
-      background: rgba(10,6,8,0.7); padding: 4px 8px; border-radius: 20px;
-      backdrop-filter: blur(8px);
-    }
-
-    /* Swipe hint */
-    .swipe-hint {
-      position: absolute;
-      bottom: 70px; left: 50%; transform: translateX(-50%);
-      z-index: 10;
-      display: flex; flex-direction: column; align-items: center; gap: 6px;
-      pointer-events: none;
-      animation: hintFade 3s ease forwards 1.5s;
-    }
-    @keyframes hintFade { 0%{opacity:1} 70%{opacity:0.8} 100%{opacity:0} }
-    .swipe-hint-arrow { font-size: 22px; animation: bounceUp 1s ease infinite; }
-    @keyframes bounceUp { 0%,100%{transform:translateY(0)} 50%{transform:translateY(-8px)} }
-    .swipe-hint-text { font-size: 9px; color: rgba(255,255,255,0.5); letter-spacing: 1.5px; text-transform: uppercase; }
-
     /* Progress bar strip on side */
     .reel-progress-strip {
       position: fixed;
@@ -300,6 +269,20 @@
       box-shadow: 0 0 6px var(--accent);
     }
 
+    /* Swipe hint */
+    .swipe-hint {
+      position: absolute;
+      bottom: 70px; left: 50%; transform: translateX(-50%);
+      z-index: 10;
+      display: flex; flex-direction: column; align-items: center; gap: 6px;
+      pointer-events: none;
+      animation: hintFade 3s ease forwards 1.5s;
+    }
+    @keyframes hintFade { 0%{opacity:1} 70%{opacity:0.8} 100%{opacity:0} }
+    .swipe-hint-arrow { font-size: 22px; animation: bounceUp 1s ease infinite; }
+    @keyframes bounceUp { 0%,100%{transform:translateY(0)} 50%{transform:translateY(-8px)} }
+    .swipe-hint-text { font-size: 9px; color: rgba(255,255,255,0.5); letter-spacing: 1.5px; text-transform: uppercase; }
+
     /* Empty state */
     .empty-reel {
       position: absolute; inset: 0;
@@ -320,6 +303,7 @@
 <header>
   <div class="badge"><div class="badge-dot"></div>69 Thought</div>
   <div class="header-right" id="headerActions" style="display:none;">
+    <button class="btn-mute" id="btnMute" onclick="toggleMute()">🔊</button>
     <button class="btn-refresh-top" id="btnRefreshTop" onclick="refreshMedia()">
       <span class="refresh-spin">↻</span> Refresh
     </button>
@@ -374,10 +358,19 @@
   </div>
   <div id="reelStrip"></div>
   <div class="reel-progress-strip" id="progressStrip"></div>
-  <div class="reel-counter" id="reelCounter" style="display:none;"></div>
 </div>
 
 <script>
+  /* ── MUTE TOGGLE ── */
+  let isMuted = false;
+  function toggleMute() {
+    isMuted = !isMuted;
+    const btn = document.getElementById("btnMute");
+    btn.textContent = isMuted ? "🔇" : "🔊";
+    btn.classList.toggle("muted", isMuted);
+    document.querySelectorAll(".reel-slide video").forEach(v => { v.muted = isMuted; });
+  }
+
   /* ── PETAL RAIN ── */
   const petals = ["🌹","🌸","✿","❀","🌺"];
   function spawnPetal() {
@@ -506,10 +499,8 @@
     const btn = document.getElementById("btnRefreshTop");
     btn.disabled = true;
     btn.innerHTML = '<span class="refresh-spin">↻</span> Fetching...';
-    // Reset reels
     document.getElementById("reelStrip").innerHTML = "";
     document.getElementById("progressStrip").innerHTML = "";
-    document.getElementById("reelCounter").style.display = "none";
     document.getElementById("reelsStatus").style.display = "flex";
     document.getElementById("reelsStatusText").textContent = "Fetching from Telegram...";
     allMedia = [];
@@ -560,7 +551,6 @@
       slide.className = "reel-slide";
       slide.style.top = (i * slideHeight) + "px";
 
-      const date = new Date(item.date * 1000).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" });
       const isVideo = item.type === "video";
 
       if (isVideo) {
@@ -568,7 +558,7 @@
         vid.src = item.url;
         vid.loop = true;
         vid.playsInline = true;
-        vid.muted = false;
+        vid.muted = isMuted;
         vid.preload = "metadata";
         vid.controls = false;
         slide.appendChild(vid);
@@ -579,12 +569,6 @@
         img.alt = "";
         slide.appendChild(img);
       }
-
-      slide.innerHTML += `
-        <div class="reel-info">
-          <div class="reel-type-badge ${isVideo ? 'badge-video' : 'badge-photo'}">${isVideo ? '▶ VIDEO' : '📷 PHOTO'}</div>
-          <div class="reel-date">${date}</div>
-        </div>`;
 
       strip.appendChild(slide);
     });
@@ -602,7 +586,6 @@
     setTimeout(() => hint.remove(), 5000);
 
     buildProgressStrip();
-    updateReelCounter();
     goToSlide(0, false);
     setupSwipe();
 
@@ -616,7 +599,7 @@
   function buildProgressStrip() {
     const strip = document.getElementById("progressStrip");
     strip.innerHTML = "";
-    const count = Math.min(allMedia.length, 20); // max 20 dots
+    const count = Math.min(allMedia.length, 20);
     for (let i = 0; i < count; i++) {
       const dot = document.createElement("div");
       dot.className = "prog-dot";
@@ -627,7 +610,6 @@
 
   function updateProgressStrip() {
     const count = Math.min(allMedia.length, 20);
-    // Map currentIndex to dot index
     const dotIdx = Math.round((currentIndex / Math.max(allMedia.length - 1, 1)) * (count - 1));
     for (let i = 0; i < count; i++) {
       const dot = document.getElementById("pdot-" + i);
@@ -635,17 +617,9 @@
     }
   }
 
-  function updateReelCounter() {
-    const el = document.getElementById("reelCounter");
-    if (allMedia.length === 0) { el.style.display = "none"; return; }
-    el.style.display = "block";
-    el.innerHTML = `<div class="counter-text">${currentIndex + 1} / ${allMedia.length}</div>`;
-  }
-
   function goToSlide(index, animate = true) {
     if (index < 0 || index >= allMedia.length) return;
 
-    // Pause previous video
     const prevSlide = document.querySelectorAll(".reel-slide")[currentIndex];
     if (prevSlide) {
       const prevVid = prevSlide.querySelector("video");
@@ -659,7 +633,6 @@
     strip.style.transition = animate ? "transform 0.4s cubic-bezier(0.25,0.46,0.45,0.94)" : "none";
     strip.style.transform = `translateY(${-currentIndex * slideHeight}px)`;
 
-    // Play current video
     const curSlide = document.querySelectorAll(".reel-slide")[currentIndex];
     if (curSlide) {
       const curVid = curSlide.querySelector("video");
@@ -670,7 +643,6 @@
     }
 
     updateProgressStrip();
-    updateReelCounter();
   }
 
   /* Touch / Mouse swipe handling */
@@ -678,7 +650,6 @@
     const view = document.getElementById("reelsView");
     let startY = 0, startX = 0, isDragging = false, lastDelta = 0;
 
-    // Touch
     view.addEventListener("touchstart", e => {
       startY = e.touches[0].clientY;
       startX = e.touches[0].clientX;
@@ -705,7 +676,6 @@
       else goToSlide(currentIndex);
     }, { passive: true });
 
-    // Mouse wheel
     let wheelCooldown = false;
     view.addEventListener("wheel", e => {
       if (wheelCooldown) return;
@@ -716,7 +686,6 @@
       setTimeout(() => { wheelCooldown = false; }, 600);
     }, { passive: false });
 
-    // Keyboard arrows
     document.addEventListener("keydown", e => {
       if (document.getElementById("reelsView").style.display === "none") return;
       if (e.key === "ArrowDown" || e.key === "ArrowRight") goToSlide(currentIndex + 1);
@@ -725,7 +694,6 @@
   }
 
   function resetApp() {
-    // Pause any playing video
     document.querySelectorAll(".reel-slide video").forEach(v => v.pause());
 
     allMedia = [];
@@ -734,7 +702,6 @@
 
     document.getElementById("reelStrip").innerHTML = "";
     document.getElementById("progressStrip").innerHTML = "";
-    document.getElementById("reelCounter").style.display = "none";
     document.getElementById("reelsStatus").style.display = "flex";
     document.getElementById("reelsStatusText").textContent = "Fetching from Telegram...";
     document.getElementById("reelsView").style.display = "none";
