@@ -239,6 +239,20 @@
       display: block;
     }
 
+    /* Buffering spinner (shown while video is loading) */
+    .buf-spin {
+      position: absolute;
+      top: 50%; left: 50%;
+      transform: translate(-50%, -50%);
+      width: 36px; height: 36px;
+      border: 2px solid rgba(255,255,255,0.15);
+      border-top-color: rgba(255,255,255,0.7);
+      border-radius: 50%;
+      animation: spin 0.7s linear infinite;
+      z-index: 6;
+      pointer-events: none;
+    }
+
     /* GIF badge */
     .gif-badge {
       position: absolute;
@@ -582,6 +596,40 @@
     }
   }
 
+  // Preload window: load N items ahead/behind current index
+  const PRELOAD_AHEAD  = 3;
+  const PRELOAD_BEHIND = 1;
+
+  function preloadAround(index) {
+    const start = Math.max(0, index - PRELOAD_BEHIND);
+    const end   = Math.min(allMedia.length - 1, index + PRELOAD_AHEAD);
+    const slides = document.querySelectorAll(".reel-slide");
+
+    slides.forEach((slide, i) => {
+      const vid = slide.querySelector("video");
+      const img = slide.querySelector("img");
+
+      if (i >= start && i <= end) {
+        // Within preload window — load it
+        if (vid && !vid.src) {
+          vid.src = allMedia[i].url;
+          vid.preload = "auto";
+          vid.load();
+        } else if (vid && vid.preload !== "auto") {
+          vid.preload = "auto";
+          vid.load();
+        }
+        if (img && img.dataset.src) {
+          img.src = img.dataset.src;
+          delete img.dataset.src;
+        }
+      } else {
+        // Outside window — don't actively preload, conserve bandwidth
+        // (already loaded ones stay loaded — browser cache handles it)
+      }
+    });
+  }
+
   function buildReelSlides() {
     const strip = document.getElementById("reelStrip");
     strip.innerHTML = "";
@@ -597,17 +645,20 @@
 
       if (isVideo || isGif) {
         const vid = document.createElement("video");
-        vid.src = item.url;
+        // Only eagerly set src for first PRELOAD_AHEAD+1 slides;
+        // rest get src assigned later via preloadAround()
+        if (i <= PRELOAD_AHEAD) {
+          vid.src = item.url;
+          vid.preload = "auto";
+        }
+        // else: src assigned lazily by preloadAround()
         vid.loop = true;
         vid.playsInline = true;
-        // GIFs are always muted; real videos respect isMuted
         vid.muted = isGif ? true : isMuted;
-        vid.preload = "metadata";
         vid.controls = false;
 
         if (isGif) {
           slide.classList.add("reel-gif");
-          // GIF badge
           const badge = document.createElement("div");
           badge.className = "gif-badge";
           badge.textContent = "GIF";
@@ -616,10 +667,14 @@
 
         slide.appendChild(vid);
       } else {
-        // photo
         const img = document.createElement("img");
-        img.src = item.url;
-        img.loading = i < 3 ? "eager" : "lazy";
+        if (i < PRELOAD_AHEAD + 1) {
+          img.src = item.url;
+          img.loading = "eager";
+        } else {
+          img.dataset.src = item.url; // deferred
+          img.loading = "lazy";
+        }
         img.alt = "";
         slide.appendChild(img);
       }
@@ -674,7 +729,9 @@
   function goToSlide(index, animate = true) {
     if (index < 0 || index >= allMedia.length) return;
 
-    const prevSlide = document.querySelectorAll(".reel-slide")[currentIndex];
+    const slides = document.querySelectorAll(".reel-slide");
+
+    const prevSlide = slides[currentIndex];
     if (prevSlide) {
       const prevVid = prevSlide.querySelector("video");
       if (prevVid) prevVid.pause();
@@ -687,15 +744,38 @@
     strip.style.transition = animate ? "transform 0.4s cubic-bezier(0.25,0.46,0.45,0.94)" : "none";
     strip.style.transform = `translateY(${-currentIndex * slideHeight}px)`;
 
-    const curSlide = document.querySelectorAll(".reel-slide")[currentIndex];
+    const curSlide = slides[currentIndex];
     if (curSlide) {
       const curVid = curSlide.querySelector("video");
       if (curVid) {
+        // Lazy-load: assign src if not yet set
+        if (!curVid.src && allMedia[currentIndex]) {
+          curVid.src = allMedia[currentIndex].url;
+          curVid.preload = "auto";
+          curVid.load();
+        }
         curVid.currentTime = 0;
+
+        // Show a buffering spinner if video isn't ready
+        let bufEl = curSlide.querySelector(".buf-spin");
+        if (curVid.readyState < 3) {
+          if (!bufEl) {
+            bufEl = document.createElement("div");
+            bufEl.className = "buf-spin";
+            curSlide.appendChild(bufEl);
+          }
+          const onReady = () => { bufEl && bufEl.remove(); curVid.removeEventListener("canplay", onReady); };
+          curVid.addEventListener("canplay", onReady);
+        } else {
+          bufEl && bufEl.remove();
+        }
+
         curVid.play().catch(() => {});
       }
     }
 
+    // Preload surrounding slides proactively
+    preloadAround(currentIndex);
     updateProgressStrip();
   }
 
