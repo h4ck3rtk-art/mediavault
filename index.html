@@ -246,28 +246,7 @@
       pointer-events: none; z-index: 2;
     }
 
-    /* Progress bar strip on side */
-    .reel-progress-strip {
-      position: fixed;
-      right: 6px;
-      top: 50%; transform: translateY(-50%);
-      width: 3px;
-      display: flex; flex-direction: column; gap: 3px;
-      z-index: 210;
-      max-height: 200px;
-      overflow: hidden;
-    }
-    .prog-dot {
-      flex-shrink: 0;
-      height: 3px; border-radius: 2px;
-      background: rgba(255,255,255,0.2);
-      transition: background 0.3s, height 0.3s;
-    }
-    .prog-dot.active {
-      background: var(--accent);
-      height: 14px;
-      box-shadow: 0 0 6px var(--accent);
-    }
+
 
     /* Swipe hint */
     .swipe-hint {
@@ -357,7 +336,7 @@
     <div id="reelsStatusText">Fetching from Telegram...</div>
   </div>
   <div id="reelStrip"></div>
-  <div class="reel-progress-strip" id="progressStrip"></div>
+
 </div>
 
 <script>
